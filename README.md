@@ -1,44 +1,44 @@
-# Robot_Detect_Traffic_Sign
+ï»¿# Robot_Detect_Traffic_Sign
 
-Repository cho d? án robot nh?n di?n bi?n báo giao thông v?i pipeline th? giác cho ESP32-CAM và firmware tích h?p ESP32-S3.
+This repository contains a traffic sign recognition robot project with a vision pipeline for ESP32-CAM and integrated control firmware for ESP32-S3.
 
-## Thành ph?n chính
+## Main Components
 
-- `firmware/esp32cam/` - firmware ESP32-CAM g?i k?t qu? nh?n di?n bi?n báo
-- `firmware/esp32s3/` - firmware ESP32-S3 di?u khi?n/nh?n tín hi?u tích h?p
-- `models/` - model và artifact ph?c v? inference
-- `scripts/` - script chu?n b? d? li?u, train, evaluate, monitor
-- `notebooks/` - notebook/script hu?n luy?n
-- `docs/` - tài li?u chu?n c?a d? án
-- `reports/` - báo cáo dánh giá
+- `firmware/esp32cam/` - ESP32-CAM firmware that sends traffic sign recognition results
+- `firmware/esp32s3/` - ESP32-S3 firmware for integrated control and signal handling
+- `models/` - models and artifacts used for inference
+- `scripts/` - scripts for data preparation, training, evaluation, and monitoring
+- `notebooks/` - training notebooks/scripts
+- `docs/` - project documentation and standards
+- `reports/` - evaluation reports
 
-## Firmware dang track trong repo
+## Firmware Tracked in This Repository
 
 - `firmware/esp32cam/test-esp32cam-phase05.ino`
 - `firmware/esp32cam/model_data.h`
 - `firmware/esp32s3/test-esp32s3-phase05-integration.ino`
 
-Luu ý:
-- Wi-Fi trong firmware ESP32-CAM dang d? placeholder:
+Notes:
+- Wi-Fi values in ESP32-CAM firmware are placeholders:
   - `YOUR_WIFI_SSID`
   - `YOUR_WIFI_PASSWORD`
-- C?n d?i tru?c khi n?p firmware.
+- Replace them before flashing firmware.
 
-## Lu?ng t?ng quan
+## High-Level Workflow
 
-1. Thu th?p/chu?n hóa d? li?u ?nh (`scripts/`)
+1. Collect/prepare image data (`scripts/`)
 2. Train model (FOMO/classifier)
-3. Evaluate và sinh báo cáo (`reports/`)
-4. C?p nh?t `model_data.h`/model deploy
-5. N?p firmware ESP32-CAM + ESP32-S3 d? ch?y tích h?p
+3. Evaluate and generate reports (`reports/`)
+4. Update deployable model files / `model_data.h`
+5. Flash ESP32-CAM + ESP32-S3 firmware for integrated run
 
-## Thi?t l?p nhanh môi tru?ng Python
+## Quick Python Setup
 
 ```bash
 pip install -r scripts/requirements.txt
 ```
 
-## Tài li?u nên d?c tru?c
+## Recommended Reading
 
 - `docs/project-overview-pdr.md`
 - `docs/codebase-summary.md`
@@ -46,7 +46,7 @@ pip install -r scripts/requirements.txt
 - `docs/deployment-guide.md`
 - `docs/project-roadmap.md`
 
-## Ghi chú Git
+## Git Notes
 
-- Các thu m?c công c? n?i b? nhu `.claude/`, `.opencode/` dã du?c ignore và không push lên remote.
-- Ch? gi? l?i source/asset th?c s? liên quan d?n d? án robot.
+- Internal tooling folders such as `.claude/` and `.opencode/` are ignored and not pushed to remote.
+- The repository only tracks source/assets that are directly related to the robot project.
