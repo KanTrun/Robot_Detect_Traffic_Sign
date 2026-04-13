@@ -32,19 +32,21 @@ This guide walks through setting up Edge Impulse for training a traffic sign rec
 - 15 labels visible in label distribution chart
 - Each class has ~160 samples
 
-## Step 3: Upload Test Data (5 min)
+## Step 3: Upload Validation + Test Data (5-10 min)
 
 1. In **Data acquisition**, click **Upload data** again
 2. Select **Choose files**
 3. Navigate to `D:\DoAn_Robot\data\test\`
 4. Upload all folders
-5. **IMPORTANT:** Check "Automatically split between train and test" → Set to **Test data only**
-6. Wait for upload (~600 images)
+5. **IMPORTANT:**
+   - Upload `data/val/` trước và đánh dấu là **Validation data**
+   - Upload `data/test/` sau và đánh dấu là **Test data only**
+6. Wait for upload (~900 images total val+test)
 
 **Verify:**
-- Test data shows ~600 samples
-- Train/test split approximately 80/20
-- All 15 labels present in test set
+- Validation data shows ~15% samples
+- Test data shows ~15% samples
+- All 15 labels present in validation/test sets
 
 ## Step 4: Create Impulse (10 min)
 
@@ -96,10 +98,10 @@ This guide walks through setting up Edge Impulse for training a traffic sign rec
 
    **Data augmentation:**
    - Enable augmentation: **✓**
-   - Flip: **Horizontal only**
-   - Rotation: **±15 degrees**
+   - Flip: **Off** (không dùng horizontal flip cho biển báo có tính định hướng)
+   - Rotation: **±10 degrees**
    - Crop: **10%**
-   - Brightness: **±10%**
+   - Brightness: **±15%**
 
 3. Click **Start training**
 4. Wait 15-20 minutes (cloud GPU)

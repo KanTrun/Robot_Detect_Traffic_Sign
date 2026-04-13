@@ -1,11 +1,30 @@
 # Hướng dẫn sử dụng Google Colab Notebook
 # Google Colab Notebook Usage Guide
 
+> 2026-03-29 release update:
+> Canonical deploy flow đã chuyển sang **FOMO detector full-frame** cho ESP32-CAM.
+> Baseline classifier `1x5` chỉ còn dùng cho debug/đối chứng, không phải release path.
+>
+> Canonical release contract:
+> - labels: `_background_`, `stop`, `speed_limit`, `warning`, `other_reg`
+> - input: `96x96x3`
+> - output: `[1,12,12,5]`
+> - schema: `fomo-grid-v2`
+>
+> Quick start:
+> 1. `python scripts/capture_esp32cam_dataset.py --ip <ip> --label stop --domain print`
+> 2. Ghi bbox `x1,y1,x2,y2` vào manifest thu được
+> 3. `python scripts/prepare_esp32cam_fomo_manifest.py`
+> 4. `python notebooks/train_fomo_detection.py --manifest data/esp32cam-fomo/fomo_manifest.csv`
+> 5. `python scripts/evaluate_esp32cam_fomo.py --model models/traffic_sign_fomo_int8.tflite`
+
 ## Tổng quan (Overview)
 
-Notebook này chứa toàn bộ quy trình huấn luyện mô hình nhận dạng biển báo giao thông trên Google Colab, từ tải dataset đến xuất model cho ESP32-CAM.
+Notebook này chứa quy trình huấn luyện **ROI classifier** cho nhận dạng biển báo giao thông trên Google Colab, từ chuẩn bị dữ liệu đến xuất model cho ESP32-CAM.
 
-This notebook contains the complete workflow for training traffic sign recognition model on Google Colab, from downloading dataset to exporting model for ESP32-CAM.
+This notebook contains the workflow for training a **ROI classifier** traffic-sign model on Google Colab, from data preparation to ESP32-CAM export.
+
+> Cập nhật theo pipeline mới: classifier 5 lớp (`_background_`, `stop`, `speed_limit`, `warning`, `other_reg`), MobileNetV2 `alpha=0.35`, input `96x96`, output tensor `[1,5]`, export int8 + `model_data.h` + `class_labels.txt` + `fomo_*.json` (schema `classifier-v1`).
 
 ---
 
@@ -76,20 +95,20 @@ This notebook contains the complete workflow for training traffic sign recogniti
 - Thời gian: 10-15 phút
 - Tự động copy vào Google Drive
 
-**Cell 2.2:** Định nghĩa 15 lớp biển báo
-- Chạy để xem danh sách 15 biển báo đã chọn
+**Cell 2.2:** Định nghĩa nhãn classifier 5 lớp
+- Chạy để xem danh sách nhãn: `_background_`, `stop`, `speed_limit`, `warning`, `other_reg`
 
-**Cell 2.3:** Lọc và sao chép 15 lớp
-- Lọc từ 43 lớp GTSRB xuống 15 lớp
-- Thời gian: 5 phút
+**Cell 2.3:** Tạo ROI dataset cho classifier
+- Gom và remap dữ liệu về 5 lớp mục tiêu
+- Thời gian: 5-10 phút
 
 **Cell 2.4:** Chuyển đổi PPM → JPEG
 - Chuyển đổi và resize về 96×96
 - Thời gian: 10-15 phút
 
-**Cell 2.5:** Chia Train/Test (80/20)
-- Tự động chia dataset
-- Thời gian: 2 phút
+**Cell 2.5:** Chia Train/Val/Test (70/15/15)
+- Tự động chia dataset theo split scene-aware
+- Thời gian: 2-3 phút
 
 **Cell 2.6:** Hiển thị mẫu ảnh
 - Xem preview các lớp biển báo
@@ -100,6 +119,7 @@ This notebook contains the complete workflow for training traffic sign recogniti
 
 **Cell 3.1:** Thiết lập Data Generators
 - Tạo data generators với augmentation
+- **Lưu ý:** tắt `horizontal_flip` để tránh gây nhầm lớp trái/phải
 
 **Cell 3.2:** Xây dựng MobileNetV2
 - Xây dựng mô hình MobileNetV2 alpha=0.35
@@ -170,11 +190,16 @@ from google.colab import files
 # Tải file quan trọng nhất (C++ header cho ESP32)
 files.download(f"{MODELS_DIR}/model_data.h")
 
-# Tải TFLite model
-files.download(f"{MODELS_DIR}/traffic_sign_model_int8.tflite")
+# Tải TFLite model (tên giữ fomo_* để compatibility)
+files.download(f"{MODELS_DIR}/traffic_sign_fomo_int8.tflite")
 
 # Tải class labels
 files.download(f"{MODELS_DIR}/class_labels.txt")
+
+# Tải metadata/report theo schema classifier-v1
+files.download(f"{MODELS_DIR}/fomo_summary.json")
+files.download(f"{MODELS_DIR}/fomo_eval_report.json")
+files.download(f"{MODELS_DIR}/fomo_calibration.json")
 ```
 
 ### Cách 2: Từ Google Drive (khuyến nghị)
@@ -183,8 +208,11 @@ files.download(f"{MODELS_DIR}/class_labels.txt")
 2. Vào thư mục: **MyDrive/TrafficSignRobot/models/**
 3. Tải các file sau về `D:\DoAn_Robot\models\`:
    - ✅ **model_data.h** (quan trọng nhất cho ESP32)
-   - ✅ **traffic_sign_model_int8.tflite**
+   - ✅ **traffic_sign_fomo_int8.tflite** *(classifier model, giữ tên fomo để drop-in compatibility)*
    - ✅ **class_labels.txt**
+   - ✅ **fomo_summary.json** *(schema `classifier-v1`)*
+   - ✅ **fomo_eval_report.json** *(schema `classifier-v1`)*
+   - ✅ **fomo_calibration.json** *(schema `classifier-v1`)*
    - 📊 training_curves.png (để báo cáo)
    - 📊 confusion_matrix.png (để báo cáo)
    - 📊 best_model.h5 (backup)
@@ -196,14 +224,17 @@ files.download(f"{MODELS_DIR}/class_labels.txt")
 ```
 Google Drive/MyDrive/TrafficSignRobot/
 ├── dataset/              # GTSRB raw dataset (1.2GB)
-├── dataset_filtered/     # 15 lớp đã lọc (3,000 ảnh)
-├── data_train/          # Training set (2,400 ảnh)
-├── data_test/           # Test set (600 ảnh)
-└── models/              # ⭐ FOLDER QUAN TRỌNG NHẤT
+├── data_train/           # Training set cho classifier
+├── data_val/             # Validation set cho classifier
+├── data_test/            # Test set cho classifier
+└── models/               # ⭐ FOLDER QUAN TRỌNG NHẤT
     ├── best_model.h5                    # Keras model (backup)
-    ├── traffic_sign_model_int8.tflite  # TFLite int8 model
+    ├── traffic_sign_fomo_int8.tflite   # TFLite int8 classifier (giữ tên fomo_*)
     ├── model_data.h                     # ⭐ C++ header cho ESP32
-    ├── class_labels.txt                 # Danh sách tên lớp
+    ├── class_labels.txt                 # `_background_, stop, speed_limit, warning, other_reg`
+    ├── fomo_summary.json                # Summary (schema `classifier-v1`)
+    ├── fomo_eval_report.json            # Eval report (schema `classifier-v1`)
+    ├── fomo_calibration.json            # Calibration (schema `classifier-v1`)
     ├── training_curves.png              # Biểu đồ huấn luyện
     ├── confusion_matrix.png             # Ma trận nhầm lẫn
     ├── classification_report.txt        # Báo cáo chi tiết
@@ -218,18 +249,18 @@ Google Drive/MyDrive/TrafficSignRobot/
 
 | Metric | Target | Minimum |
 |--------|--------|---------|
-| Test Accuracy | 92% | 90% |
-| Model Size (int8) | 350KB | <500KB |
+| Classifier Top-1 Accuracy | Pending measurement | Pending measurement |
+| Model Size (int8) | Pending measurement | <500KB |
 | Training Time | 30 min | - |
 | Total Time | 90 min | - |
 
 ### 📊 Typical Results
 
 ```
-✅ Test Accuracy: 92.3%
-✅ Model Size: 347 KB
-✅ Inference Time: ~2.1s on ESP32
-✅ Classes: 15 Vietnamese traffic signs
+✅ Classifier labels: 5 (`_background_`, `stop`, `speed_limit`, `warning`, `other_reg`)
+✅ Input/Output contract: `96x96x3` → `[1,5]` uint8
+✅ Export artifacts: `traffic_sign_fomo_int8.tflite`, `model_data.h`, `class_labels.txt`, `fomo_*.json` (schema `classifier-v1`)
+⏳ Accuracy / model size / ESP32 inference time: pending measurement
 ```
 
 ---
@@ -267,13 +298,14 @@ Google Drive/MyDrive/TrafficSignRobot/
 
 ---
 
-### ❌ Lỗi: Accuracy < 90%
+### ❌ Lỗi: Classifier accuracy thấp
 
-**Nguyên nhân:** Model chưa đủ tốt
+**Nguyên nhân:** Model chưa đủ tốt hoặc dữ liệu chưa cân bằng tốt cho 5 lớp
 **Giải pháp:**
 1. Tăng EPOCHS từ 50 lên 80 ở Cell 3.3
 2. Hoặc tăng ALPHA từ 0.35 lên 0.5 ở Cell 3.2
-3. Chạy lại training
+3. Rà soát lại tỷ lệ `_background_` và các lớp biển báo
+4. Chạy lại training
 
 ---
 
@@ -339,6 +371,33 @@ Sau khi có file `model_data.h`:
    ```
 
 4. **Xem Phase 3 plan để biết chi tiết integration**
+
+---
+
+## ESP32-CAM + DFPlayer Runtime Mapping
+
+Pipeline runtime hiện tại dùng classifier 5 lớp, nhưng chỉ phát âm thanh cho 4 nhóm biển báo:
+
+| Class ID | Label | Nhóm biển thực tế | DFPlayer Track | MP3 file | Câu đọc gợi ý |
+|----------|-------|-------------------|----------------|----------|----------------|
+| 0 | `_background_` | Nền / không có biển | 1 | `MP3/0001.mp3` | Không dùng trong runtime, có thể để beep test |
+| 1 | `stop` | Biển dừng | 2 | `MP3/0002.mp3` | Biển dừng lại |
+| 2 | `speed_limit` | Tốc độ 20 / 30 / 50 | 3 | `MP3/0003.mp3` | Biển giới hạn tốc độ |
+| 3 | `warning` | Trẻ em, người đi bộ, đường đang thi công | 4 | `MP3/0004.mp3` | Biển cảnh báo phía trước |
+| 4 | `other_reg` | Cấm đi vào, hết hạn chế, đi bên trái/phải, rẽ trái/phải, chỉ đi thẳng, vòng xuyến | 5 | `MP3/0005.mp3` | Biển chỉ dẫn hoặc biển cấm |
+
+Lưu ý runtime:
+- ESP32-CAM không chụp 1 ảnh rồi dừng. Nó đọc frame camera liên tục, suy luận trên từng frame, rồi lặp lại.
+- Vòng lặp nhận diện có delay cơ bản `80ms`.
+- Sau khi vừa gửi một biển hợp lệ, firmware cooldown `700ms` để tránh lặp âm thanh.
+- Khi đang mở web stream, firmware giảm tần số suy luận xuống khoảng `200ms` mỗi lần để tránh tranh chấp camera.
+- ESP32-S3 map âm thanh theo `track = classId + 1`, vì vậy chỉ cần chép đúng `0002.mp3` đến `0005.mp3` là đúng với 4 nhóm biển hiện tại.
+
+Checklist test nhanh:
+1. Copy file vào microSD theo đúng tên `MP3/0002.mp3` đến `MP3/0005.mp3`.
+2. Mở serial ESP32-CAM và xác nhận có log `SIGN:<class_id>:<confidence>`.
+3. Mở serial ESP32-S3 và xác nhận có log `SIGN_OK class=... label=... track=... file=...`.
+4. Đưa biển thật trước camera và nghe DFPlayer phát đúng track tương ứng.
 
 ---
 

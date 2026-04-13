@@ -1,20 +1,20 @@
-| GTSRB ID | GTSRB Name | Vietnam Sign | Vietnamese Name | Reason for Selection |
-|----------|------------|--------------|-----------------|---------------------|
-| 0 | Speed limit (20km/h) | Speed Limit 20 | Tốc độ tối đa 20 | Common in school zones |
-| 1 | Speed limit (30km/h) | Speed Limit 30 | Tốc độ tối đa 30 | Residential areas |
-| 2 | Speed limit (50km/h) | Speed Limit 50 | Tốc độ tối đa 50 | Urban roads |
-| 14 | Stop | Stop Sign | Dừng | Critical safety sign |
-| 17 | No entry | No Entry | Cấm đi ngược chiều | Common traffic restriction |
-| 25 | Road work | Road Work | Đường đang thi công | Frequent in Vietnam |
-| 28 | Children crossing | Children Crossing | Trẻ em qua đường | School zones |
-| 31 | Wild animals crossing | Pedestrian Crossing | Người đi bộ qua đường | Urban/rural areas |
-| 33 | Turn right ahead | Turn Right | Rẽ phải phía trước | Directional guidance |
-| 34 | Turn left ahead | Turn Left | Rẽ trái phía trước | Directional guidance |
-| 35 | Ahead only | Straight Only | Chỉ được đi thẳng | Intersection control |
-| 38 | Keep right | Keep Right | Chỉ được đi bên phải | Lane discipline |
-| 39 | Keep left | Keep Left | Chỉ được đi bên trái | Lane discipline |
-| 40 | Roundabout mandatory | Roundabout | Bắt buộc đi vòng | Intersection type |
-| 41 | End of no passing | End Restriction | Hết khu vực cấm vượt | Speed zone change |
+| GTSRB ID | GTSRB Name | Internal Label (`class_labels.txt`) | Vietnamese Name | Reason for Selection |
+|----------|------------|--------------------------------------|-----------------|---------------------|
+| 40 | Roundabout mandatory | `bung_binh` | Vòng xuyến | Common intersection control |
+| 17 | No entry | `cam_di_vao` | Cấm đi vào | Critical restriction sign |
+| 35 | Ahead only | `chi_di_thang` | Chỉ đi thẳng | Frequent directional control |
+| 25 | Road work | `dang_thi_cong` | Đường đang thi công | High real-world frequency |
+| 38 | Keep right | `di_ben_phai` | Đi bên phải | Lane discipline |
+| 39 | Keep left | `di_ben_trai` | Đi bên trái | Lane discipline |
+| 14 | Stop | `dung` | Dừng | Safety-critical sign |
+| 41 | End of no passing | `het_han_che` | Hết hạn chế | Regulation transition |
+| 31 | Pedestrians | `nguoi_di_bo` | Người đi bộ qua đường | Urban safety sign |
+| 33 | Turn right ahead | `re_phai` | Rẽ phải | Directional guidance |
+| 34 | Turn left ahead | `re_trai` | Rẽ trái | Directional guidance |
+| 0 | Speed limit (20km/h) | `toc_do_20` | Tốc độ tối đa 20 | School/low-speed zones |
+| 1 | Speed limit (30km/h) | `toc_do_30` | Tốc độ tối đa 30 | Urban/residential roads |
+| 2 | Speed limit (50km/h) | `toc_do_50` | Tốc độ tối đa 50 | Main urban roads |
+| 28 | Children crossing | `tre_em_qua_duong` | Trẻ em qua đường | School zones |
 
 ## Selection Criteria
 

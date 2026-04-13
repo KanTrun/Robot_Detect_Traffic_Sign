@@ -1,5 +1,10 @@
 # Training Report - Phase 1: Dataset Preparation & AI Model Training
 
+> 2026-03-29 release correction:
+> The repo no longer treats the ROI classifier as the final deploy path.
+> Canonical release is now a **12x12x5 FOMO full-frame detector** trained on ESP32-CAM-domain data.
+> The old classifier remains available only as a baseline/debug path.
+
 **Project:** Traffic Sign Recognition Robot for Visually Impaired
 **Date:** January 30, 2026
 **Status:** Implementation Complete
@@ -9,16 +14,18 @@
 
 ## Executive Summary
 
-Successfully completed Phase 1 dataset preparation and AI model training infrastructure. Created automated pipeline for GTSRB dataset processing, selected 15 Vietnamese traffic sign classes, and documented Edge Impulse training workflow. All scripts tested and ready for execution.
+Completed Phase 1 dataset preparation and migrated training pipeline from FOMO flow to ROI classifier flow. Current pipeline trains a 5-class classifier (`_background_`, `stop`, `speed_limit`, `warning`, `other_reg`) and exports int8 artifacts for ESP32-CAM deployment with drop-in compatible `fomo_*` filenames.
 
 **Key Achievements:**
 - ✅ Dataset download and filtering scripts implemented
 - ✅ Image conversion pipeline (PPM → JPEG 96×96)
-- ✅ Train/test split automation (80/20)
+- ✅ Train/val/test split automation (70/15/15, scene-aware)
 - ✅ Dataset validation with integrity checks
 - ✅ Vietnamese class mapping documented
-- ✅ Edge Impulse setup guide created
-- ✅ Training report template prepared
+- ✅ Classifier pipeline migration complete (from FOMO flow)
+- ✅ Export contract updated to classifier-v1 with compatibility filenames
+- ✅ Edge Impulse setup guide created (legacy path, still documented)
+- ✅ Training report updated
 
 ---
 
@@ -30,42 +37,33 @@ Successfully completed Phase 1 dataset preparation and AI model training infrast
 - **Size:** 1.2GB (~50,000 images, 43 classes)
 - **License:** Public domain (educational use)
 
-### Selected Classes (15 Vietnamese Signs)
+### Current Classifier Labels (5 classes)
 
-| GTSRB ID | Sign Name | Vietnamese Name | Images Target |
-|----------|-----------|-----------------|---------------|
-| 0 | Speed Limit 20 | Tốc độ tối đa 20 | 200 |
-| 1 | Speed Limit 30 | Tốc độ tối đa 30 | 200 |
-| 2 | Speed Limit 50 | Tốc độ tối đa 50 | 200 |
-| 14 | Stop | Dừng | 200 |
-| 17 | No Entry | Cấm đi ngược chiều | 200 |
-| 25 | Road Work | Đường đang thi công | 200 |
-| 28 | Children Crossing | Trẻ em qua đường | 200 |
-| 31 | Pedestrian Crossing | Người đi bộ | 200 |
-| 33 | Turn Right Ahead | Rẽ phải phía trước | 200 |
-| 34 | Turn Left Ahead | Rẽ trái phía trước | 200 |
-| 35 | Ahead Only | Chỉ được đi thẳng | 200 |
-| 38 | Keep Right | Chỉ được đi bên phải | 200 |
-| 39 | Keep Left | Chỉ được đi bên trái | 200 |
-| 40 | Roundabout | Bắt buộc đi vòng | 200 |
-| 41 | End Restriction | Hết khu vực cấm | 200 |
+| Label | Role |
+|-------|------|
+| `_background_` | No-sign / negative ROI |
+| `stop` | Stop sign group |
+| `speed_limit` | Speed limit sign group |
+| `warning` | Warning sign group |
+| `other_reg` | Other regulatory sign group |
 
-**Total Target:** 3,000 images (15 classes × 200 images)
+**Model contract:** input `96x96x3`, output `[1,5]` (uint8 after int8 quantized export).
 
 ### Dataset Organization
 
 **After processing:**
 ```
 data/
-├── train/          # 2,400 images (80%)
-│   ├── speed_limit_20/      # ~160 images
-│   ├── speed_limit_30/      # ~160 images
-│   ├── stop/                # ~160 images
-│   └── ... (12 more classes)
-└── test/           # 600 images (20%)
-    ├── speed_limit_20/      # ~40 images
-    ├── speed_limit_30/      # ~40 images
-    └── ... (15 classes)
+├── train/          # classifier training split
+│   ├── _background_/
+│   ├── stop/
+│   ├── speed_limit/
+│   ├── warning/
+│   └── other_reg/
+├── val/            # classifier validation split
+│   └── (same 5 labels)
+└── test/           # classifier test split
+    └── (same 5 labels)
 ```
 
 ---
@@ -94,11 +92,11 @@ python scripts/download_gtsrb.py
 ---
 
 ### 2. Class Filter Script (`scripts/filter_classes.py`)
-**Purpose:** Select 15 Vietnamese traffic sign classes
+**Purpose:** Filter source traffic sign classes before remap
 **Features:**
-- Filters from 43 GTSRB classes to 15
-- Stratified sampling (200 images/class)
-- Preserves class balance
+- Selects source classes used by classifier pipeline
+- Prepares intermediate data for 5-label remapping
+- Preserves class balance in preprocessing stage
 - Organized folder structure
 
 **Usage:**
@@ -106,15 +104,13 @@ python scripts/download_gtsrb.py
 python scripts/filter_classes.py
 ```
 
-**Output:** `data/gtsrb_filtered/` (15 folders, 3,000 PPM images)
-
 ---
 
 ### 3. Image Conversion Script (`scripts/convert_images.py`)
 **Purpose:** Convert PPM to JPEG and resize
 **Features:**
 - PPM → JPEG conversion (quality 95)
-- Resize to 96×96 (Edge Impulse input)
+- Resize to 96×96 (classifier input)
 - RGB color preservation
 - Batch processing with progress
 
@@ -123,17 +119,15 @@ python scripts/filter_classes.py
 python scripts/convert_images.py
 ```
 
-**Output:** 3,000 JPEG images (96×96, ~10-15KB each)
-
 ---
 
 ### 4. Dataset Split Script (`scripts/split_dataset.py`)
-**Purpose:** Create train/test split
+**Purpose:** Create train/val/test split
 **Features:**
-- 80/20 stratified split
+- 70/15/15 scene-aware split
 - Random seed (42) for reproducibility
 - Per-class balance verification
-- sklearn integration
+- Leakage prevention across train/val/test
 
 **Usage:**
 ```bash
@@ -141,8 +135,9 @@ python scripts/split_dataset.py
 ```
 
 **Output:**
-- `data/train/` - 2,400 images
-- `data/test/` - 600 images
+- `data/train/` - ~2,100 images
+- `data/val/` - ~450 images
+- `data/test/` - ~450 images
 
 ---
 
@@ -163,15 +158,28 @@ python scripts/validate_dataset.py
 
 ---
 
-## Edge Impulse Training Workflow
+## Classifier Training Workflow (Current)
 
 ### Model Architecture
 - **Base Model:** MobileNetV2 alpha=0.35
 - **Transfer Learning:** ImageNet pretrained weights
 - **Final Layers:**
   - Global Average Pooling
-  - Dropout (0.25-0.3)
-  - Dense(15, softmax)
+  - Dropout
+  - Dense(5, softmax)
+
+### Export Contract (classifier-v1)
+- **Input tensor:** `96x96x3` uint8
+- **Output tensor:** `[1,5]` uint8
+- **Label order:** `_background_`, `stop`, `speed_limit`, `warning`, `other_reg`
+- **Artifacts:**
+  - `traffic_sign_fomo_int8.tflite`
+  - `model_data.h`
+  - `class_labels.txt`
+  - `fomo_summary.json`
+  - `fomo_eval_report.json`
+  - `fomo_calibration.json`
+- **Compatibility note:** giữ tiền tố/tên `fomo_*` để drop-in compatibility với pipeline cũ.
 
 ### Recommended Hyperparameters
 
@@ -181,17 +189,17 @@ python scripts/validate_dataset.py
 | Learning Rate | 0.001 | Standard for Adam optimizer |
 | Batch Size | 32 | Optimal for dataset size |
 | Optimizer | Adam | Adaptive learning, good convergence |
-| Augmentation | Flip, Rotate ±15°, Crop 10% | Prevents overfitting |
+| Augmentation | Rotate ±15°, Crop 10%, Brightness ±15% (horizontal flip OFF) | Prevents overfitting without left/right label corruption |
 
 ### Training Targets
 
 | Metric | Target | Minimum |
 |--------|--------|---------|
-| Test Accuracy | 92% | 90% |
-| Model Size (int8) | 350KB | <500KB |
-| Inference Time (ESP32) | 2.1s | <3s |
-| Peak RAM | 200KB | <300KB |
-| F1-Score | 91.9% | >88% |
+| Classifier accuracy | Pending measurement | Pending measurement |
+| Model Size (int8) | Pending measurement | <500KB |
+| Inference Time (ESP32) | Pending measurement | <3s |
+| Peak RAM | Pending measurement | <300KB |
+| Macro F1-score | Pending measurement | Pending measurement |
 
 ---
 
@@ -203,13 +211,14 @@ python scripts/validate_dataset.py
 1. Create account: https://studio.edgeimpulse.com
 2. New project: "Traffic Sign Recognition ESP32"
 3. Upload `data/train/` (mark as training data)
-4. Upload `data/test/` (mark as test data)
-5. Create impulse: 96×96 RGB → Image → Transfer Learning
-6. Generate features (5 min)
-7. Train model: MobileNetV2 0.35, 50 epochs (20 min)
-8. Evaluate: Check >90% accuracy
-9. Deploy: Arduino library, int8 + EON compiler
-10. Download `.zip` file (~2MB)
+4. Upload `data/val/` (mark as validation data)
+5. Upload `data/test/` (mark as test data only)
+6. Create impulse: 96×96 RGB → Image → Transfer Learning
+7. Generate features (5 min)
+8. Train model: MobileNetV2 0.35, 50 epochs (20 min)
+9. Evaluate: Check >90% accuracy
+10. Deploy: Arduino library, int8 + EON compiler
+11. Download `.zip` file (~2MB)
 
 ---
 
@@ -247,18 +256,16 @@ python scripts/validate_dataset.py
 ## Success Criteria Checklist
 
 - [x] **Dataset downloaded:** GTSRB 1.2GB from Kaggle
-- [x] **15 classes selected:** Mapped to Vietnamese signs
-- [x] **3,000 images prepared:** 200/class, balanced
+- [x] **Classifier labels fixed:** `_background_`, `stop`, `speed_limit`, `warning`, `other_reg`
 - [x] **Image format:** JPEG 96×96 RGB
-- [x] **Train/test split:** 80/20 stratified
-- [x] **Scripts implemented:** All 5 automation scripts
-- [x] **Documentation:** Edge Impulse guide, class mapping
-- [x] **Validation:** Integrity check script
-- [ ] **Model trained:** Edge Impulse >90% accuracy *(pending user execution)*
-- [ ] **Model optimized:** int8 quantization <500KB *(pending)*
-- [ ] **Arduino library:** Downloaded and extracted *(pending)*
-- [ ] **Training curves:** Screenshots saved *(pending)*
-- [ ] **Confusion matrix:** Documented *(pending)*
+- [x] **Train/val/test split:** Generated for classifier pipeline
+- [x] **Scripts implemented:** Core dataset automation scripts
+- [x] **Documentation updated:** Colab + training report aligned to classifier contract
+- [x] **Validation:** Dataset integrity checks available
+- [ ] **Model trained:** classifier run complete *(pending measurement)*
+- [ ] **Model optimized:** int8 artifact size confirmed *(pending measurement)*
+- [ ] **ESP32 inference latency:** measured on device *(pending measurement)*
+- [ ] **Training curves/confusion matrix:** latest run archived *(pending measurement)*
 
 ---
 
@@ -267,11 +274,11 @@ python scripts/validate_dataset.py
 | Risk | Status | Mitigation Applied |
 |------|--------|-------------------|
 | GTSRB download fails | ✅ Mitigated | Script handles errors, suggests Kaggle CLI backup |
-| Class imbalance | ✅ Prevented | Stratified sampling 200/class |
+| Class imbalance | ✅ Planned | `_background_` ratio and per-class counts need runtime verification *(pending measurement)* |
 | Corrupted images | ✅ Handled | Validation script detects and reports |
 | PPM conversion loss | ✅ Minimized | JPEG quality=95, visual check |
-| Model size >500KB | ✅ Planned | MobileNetV2 0.35 + int8 quantization |
-| Accuracy <90% | ✅ Planned | Hyperparameter tuning guide provided |
+| Model size >500KB | ✅ Planned | int8 export enabled, final size to verify *(pending measurement)* |
+| Classifier accuracy thấp | ✅ Planned | Tune epochs/alpha and inspect confusion matrix *(pending measurement)* |
 
 ---
 
@@ -281,7 +288,7 @@ python scripts/validate_dataset.py
 1. ✅ `download_gtsrb.py` - Kaggle dataset download
 2. ✅ `filter_classes.py` - Class selection
 3. ✅ `convert_images.py` - PPM to JPEG conversion
-4. ✅ `split_dataset.py` - Train/test split
+4. ✅ `split_dataset.py` - Train/val/test split (scene-aware)
 5. ✅ `validate_dataset.py` - Dataset validation
 6. ✅ `requirements.txt` - Python dependencies
 
@@ -322,7 +329,7 @@ python scripts/validate_dataset.py
 
 4. **Edge Impulse training:**
    - Follow `docs/edge_impulse_setup.md`
-   - Upload train/test data
+   - Upload train/val/test data
    - Train model (20 min)
    - Download Arduino library
 
