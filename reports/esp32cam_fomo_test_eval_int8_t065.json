@@ -1,0 +1,104 @@
+{
+  "split": "test",
+  "count": 600,
+  "domains": {
+    "print": {
+      "count": 300,
+      "accuracy": 0.54,
+      "mean_confidence": 0.8652,
+      "confusion_matrix": [
+        [
+          39,
+          3,
+          5,
+          3,
+          10
+        ],
+        [
+          18,
+          30,
+          1,
+          6,
+          5
+        ],
+        [
+          14,
+          8,
+          24,
+          8,
+          6
+        ],
+        [
+          17,
+          3,
+          4,
+          22,
+          14
+        ],
+        [
+          2,
+          7,
+          3,
+          1,
+          47
+        ]
+      ],
+      "labels": [
+        "_background_",
+        "stop",
+        "speed_limit",
+        "warning",
+        "other_reg"
+      ]
+    },
+    "screen": {
+      "count": 300,
+      "accuracy": 0.5567,
+      "mean_confidence": 0.8737,
+      "confusion_matrix": [
+        [
+          36,
+          2,
+          7,
+          2,
+          13
+        ],
+        [
+          14,
+          37,
+          3,
+          2,
+          4
+        ],
+        [
+          19,
+          7,
+          21,
+          7,
+          6
+        ],
+        [
+          25,
+          1,
+          4,
+          25,
+          5
+        ],
+        [
+          7,
+          2,
+          3,
+          0,
+          48
+        ]
+      ],
+      "labels": [
+        "_background_",
+        "stop",
+        "speed_limit",
+        "warning",
+        "other_reg"
+      ]
+    }
+  }
+}

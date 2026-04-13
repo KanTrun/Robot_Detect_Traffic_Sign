@@ -1,0 +1,27 @@
+{
+  "schema_version": "classifier-v1",
+  "model_type": "classifier",
+  "background_class_id": 0,
+  "default": {
+    "min_emit_conf100": 55,
+    "min_margin_conf100": 20
+  },
+  "per_class": {
+    "stop": {
+      "min_emit_conf100": 55,
+      "min_margin_conf100": 20
+    },
+    "speed_limit": {
+      "min_emit_conf100": 55,
+      "min_margin_conf100": 20
+    },
+    "warning": {
+      "min_emit_conf100": 55,
+      "min_margin_conf100": 20
+    },
+    "other_reg": {
+      "min_emit_conf100": 55,
+      "min_margin_conf100": 20
+    }
+  }
+}

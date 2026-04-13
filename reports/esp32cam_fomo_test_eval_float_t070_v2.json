@@ -1,0 +1,106 @@
+{
+  "split": "test",
+  "count": 600,
+  "cell_threshold": 0.7,
+  "min_votes": 2,
+  "domains": {
+    "print": {
+      "count": 300,
+      "accuracy": 0.4833,
+      "mean_confidence": 0.5712,
+      "confusion_matrix": [
+        [
+          53,
+          1,
+          1,
+          2,
+          3
+        ],
+        [
+          30,
+          25,
+          1,
+          0,
+          4
+        ],
+        [
+          35,
+          6,
+          13,
+          3,
+          3
+        ],
+        [
+          41,
+          1,
+          0,
+          10,
+          8
+        ],
+        [
+          10,
+          4,
+          1,
+          1,
+          44
+        ]
+      ],
+      "labels": [
+        "_background_",
+        "stop",
+        "speed_limit",
+        "warning",
+        "other_reg"
+      ]
+    },
+    "screen": {
+      "count": 300,
+      "accuracy": 0.51,
+      "mean_confidence": 0.6752,
+      "confusion_matrix": [
+        [
+          49,
+          0,
+          2,
+          1,
+          8
+        ],
+        [
+          29,
+          28,
+          1,
+          0,
+          2
+        ],
+        [
+          32,
+          2,
+          18,
+          4,
+          4
+        ],
+        [
+          44,
+          0,
+          3,
+          10,
+          3
+        ],
+        [
+          9,
+          1,
+          2,
+          0,
+          48
+        ]
+      ],
+      "labels": [
+        "_background_",
+        "stop",
+        "speed_limit",
+        "warning",
+        "other_reg"
+      ]
+    }
+  }
+}

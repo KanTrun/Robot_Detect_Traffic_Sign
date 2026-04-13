@@ -1,60 +1,84 @@
 """
-GTSRB Dataset Download Script
-Downloads German Traffic Sign Recognition Benchmark dataset from Kaggle.
+LISA Dataset Staging Script (LISA-only pipeline).
+
+Backward-compatible filename: download_gtsrb.py
+Usage:
+  python scripts/download_gtsrb.py --source "D:/path/to/lisa_dataset_or_zip"
 """
 
-import kagglehub
-import os
+import argparse
 import shutil
+import zipfile
 from pathlib import Path
 
-def download_gtsrb():
-    """Download GTSRB dataset using kagglehub."""
-    print("Starting GTSRB dataset download...")
-    print("This may take 10-15 minutes depending on your internet speed (1.2GB)")
+IMAGE_PATTERNS = ("*.jpg", "*.jpeg", "*.png", "*.ppm", "*.JPG", "*.JPEG", "*.PNG", "*.PPM")
+
+
+def _count_images(root: Path) -> int:
+    total = 0
+    for pattern in IMAGE_PATTERNS:
+        total += len(list(root.rglob(pattern)))
+    return total
+
+
+def stage_lisa_dataset(source: Path, target_dir: Path) -> Path:
+    if not source.exists():
+        raise FileNotFoundError(f"Source not found: {source}")
+
+    if target_dir.exists():
+        shutil.rmtree(target_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    if source.is_file():
+        if source.suffix.lower() != ".zip":
+            raise ValueError("Only .zip source files are supported. Use --source as folder or .zip")
+
+        print(f"[INFO] Extracting ZIP: {source}")
+        with zipfile.ZipFile(source, "r") as zf:
+            zf.extractall(target_dir)
+    else:
+        print(f"[INFO] Copying directory: {source}")
+        shutil.copytree(source, target_dir, dirs_exist_ok=True)
+
+    image_count = _count_images(target_dir)
+    csv_files = list(target_dir.rglob("*.csv"))
+
+    print(f"[OK] LISA dataset staged at: {target_dir}")
+    print(f"[OK] Images found: {image_count}")
+    print(f"[OK] CSV files found: {len(csv_files)}")
+    if csv_files:
+        preview = "\n".join(f"  - {p}" for p in csv_files[:10])
+        print("[INFO] CSV preview:\n" + preview)
+
+    if image_count == 0:
+        print("[WARN] No images found after staging. Check your source dataset structure.")
+
+    print("\nNext step: run 'python scripts/filter_classes.py' to crop and map 4 classes")
+    return target_dir
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Stage LISA dataset into data/lisa_raw")
+    parser.add_argument(
+        "--source",
+        required=True,
+        help="Path to LISA dataset folder or .zip file",
+    )
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+
+    project_root = Path(__file__).parent.parent
+    target_dir = project_root / "data" / "lisa_raw"
 
     try:
-        # Download dataset
-        path = kagglehub.dataset_download("meowmeowmeowmeowmeow/gtsrb-german-traffic-sign")
-        print(f"\n✓ Dataset downloaded to: {path}")
-
-        # Get project root
-        project_root = Path(__file__).parent.parent
-        target_dir = project_root / "data" / "gtsrb_raw"
-
-        # Copy to project directory
-        print(f"\nCopying dataset to project directory: {target_dir}")
-        if target_dir.exists():
-            shutil.rmtree(target_dir)
-
-        shutil.copytree(path, target_dir)
-        print(f"✓ Dataset copied to: {target_dir}")
-
-        # Verify structure
-        train_dir = target_dir / "Train"
-        test_dir = target_dir / "Test"
-
-        if train_dir.exists():
-            num_classes = len(list(train_dir.iterdir()))
-            print(f"\n✓ Verification successful:")
-            print(f"  - Train directory: {num_classes} classes found")
-
-        if test_dir.exists():
-            print(f"  - Test directory: exists")
-
-        print("\n✅ Download complete!")
-        print(f"Next step: Run 'python scripts/filter_classes.py' to select 15 Vietnamese sign classes")
-
-        return str(target_dir)
-
+        stage_lisa_dataset(Path(args.source), target_dir)
     except Exception as e:
-        print(f"\n❌ Error downloading dataset: {e}")
-        print("\nTroubleshooting:")
-        print("1. Ensure you have a Kaggle account")
-        print("2. Download kaggle.json from Kaggle Account Settings → API")
-        print("3. Place kaggle.json in ~/.kaggle/ (Linux/Mac) or C:\\Users\\<username>\\.kaggle\\ (Windows)")
-        print("4. Install kagglehub: pip install kagglehub")
+        print(f"[ERROR] {e}")
         raise
 
+
 if __name__ == "__main__":
-    download_gtsrb()
+    main()

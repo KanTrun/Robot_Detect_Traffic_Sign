@@ -1,96 +1,219 @@
 """
 Dataset Validation Script
-Validates dataset integrity, checks for corrupted images, and generates statistics.
+Validates dataset integrity, class balance, and scene leakage across train/val/test.
 """
 
-from PIL import Image
 from pathlib import Path
+
 import pandas as pd
+from PIL import Image
+
+IMAGE_PATTERNS = ("*.jpg", "*.jpeg", "*.png", "*.ppm", "*.JPG", "*.JPEG", "*.PNG", "*.PPM")
+TARGET_CLASSES = {"stop", "speed_limit", "warning", "other_reg", "zz_no_sign"}
+
+
+def _scene_id_from_name(filename: str) -> str:
+    stem = Path(filename).stem
+    parts = stem.rsplit("_", 1)
+    if len(parts) == 2 and parts[1].isdigit():
+        return parts[0]
+    return stem
+
+
+def _validate_image(img_path: Path) -> bool:
+    try:
+        with Image.open(img_path) as img:
+            img.verify()
+        return True
+    except Exception:
+        return False
+
+
+def _scan_split(split_name: str, split_dir: Path):
+    rows = []
+    corrupted = []
+
+    for class_dir in sorted(split_dir.iterdir()):
+        if not class_dir.is_dir():
+            continue
+
+        class_name = class_dir.name
+        images = []
+        seen = set()
+        for pattern in IMAGE_PATTERNS:
+            for img_path in class_dir.glob(pattern):
+                key = str(img_path.resolve()).lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                images.append(img_path)
+        images = sorted(images)
+
+        for img_path in images:
+            valid = _validate_image(img_path)
+            row = {
+                "split": split_name,
+                "class_name": class_name,
+                "filename": img_path.name,
+                "scene_id": _scene_id_from_name(img_path.name),
+                "valid": valid,
+            }
+            rows.append(row)
+            if not valid:
+                corrupted.append(str(img_path))
+
+    return rows, corrupted
+
+
+def _print_split_overview(df: pd.DataFrame):
+    print("\n" + "=" * 72)
+    print("SPLIT/CLASS OVERVIEW")
+    print("=" * 72)
+
+    summary = (
+        df.groupby(["split", "class_name"])["valid"]
+        .agg(total="count", valid="sum")
+        .reset_index()
+    )
+    summary["corrupted"] = summary["total"] - summary["valid"]
+    print(summary.to_string(index=False))
+
+    print("\n" + "-" * 72)
+    split_totals = (
+        summary.groupby("split")[["total", "valid", "corrupted"]].sum().reset_index()
+    )
+    print(split_totals.to_string(index=False))
+
+
+def _print_balance_report(df: pd.DataFrame):
+    print("\n" + "=" * 72)
+    print("CLASS BALANCE CHECK")
+    print("=" * 72)
+
+    valid_df = df[df["valid"]]
+    pivot = valid_df.pivot_table(
+        index="class_name",
+        columns="split",
+        values="filename",
+        aggfunc="count",
+        fill_value=0,
+    ).reset_index()
+
+    for col in ["train", "val", "test"]:
+        if col not in pivot.columns:
+            pivot[col] = 0
+
+    pivot["total"] = pivot["train"] + pivot["val"] + pivot["test"]
+    print(pivot[["class_name", "train", "val", "test", "total"]].to_string(index=False))
+
+    observed = set(valid_df["class_name"].unique())
+    missing = sorted(TARGET_CLASSES - observed)
+    unexpected = sorted(observed - TARGET_CLASSES)
+
+    if missing:
+        print(f"\n[WARN] Missing expected classes: {missing}")
+    else:
+        print("\n[OK] All expected classes are present")
+
+    if unexpected:
+        print(f"[WARN] Unexpected classes found: {unexpected}")
+
+
+def _print_scene_leakage(df: pd.DataFrame):
+    print("\n" + "=" * 72)
+    print("SCENE LEAKAGE CHECK")
+    print("=" * 72)
+
+    valid_df = df[df["valid"]]
+
+    leakage_rows = []
+    classes = sorted(valid_df["class_name"].unique())
+    for class_name in classes:
+        subset = valid_df[valid_df["class_name"] == class_name]
+
+        scenes = {
+            split: set(subset[subset["split"] == split]["scene_id"].tolist())
+            for split in ["train", "val", "test"]
+        }
+
+        for a, b in [("train", "val"), ("train", "test"), ("val", "test")]:
+            overlap = scenes[a].intersection(scenes[b])
+            if overlap:
+                leakage_rows.append(
+                    {
+                        "class_name": class_name,
+                        "pair": f"{a}-{b}",
+                        "overlap_count": len(overlap),
+                    }
+                )
+
+    if not leakage_rows:
+        print("[OK] No scene leakage detected across train/val/test")
+        return
+
+    leak_df = pd.DataFrame(leakage_rows)
+    print("[WARN] Scene leakage detected:")
+    print(leak_df.to_string(index=False))
+
 
 def validate_dataset():
-    """Validate dataset and generate statistics."""
     project_root = Path(__file__).parent.parent
-    train_dir = project_root / "data" / "train"
-    test_dir = project_root / "data" / "test"
+    data_dir = project_root / "data"
+    train_dir = data_dir / "train"
+    val_dir = data_dir / "val"
+    test_dir = data_dir / "test"
+    report_path = data_dir / "dataset_validation_report.csv"
 
-    if not train_dir.exists() or not test_dir.exists():
-        print(f"❌ Error: Train or test directory not found")
+    required = [train_dir, val_dir, test_dir]
+    missing = [str(p) for p in required if not p.exists()]
+    if missing:
+        print("[ERROR] Error: Required split directories not found")
+        for m in missing:
+            print(f"  - {m}")
         print("Please run 'python scripts/split_dataset.py' first")
         return
 
-    print("Validating dataset...\n")
+    split_dirs = [("train", train_dir), ("val", val_dir), ("test", test_dir)]
 
-    # Validate both sets
-    for dataset_name, dataset_dir in [("TRAIN", train_dir), ("TEST", test_dir)]:
-        print(f"\n{'='*60}")
-        print(f"{dataset_name} SET VALIDATION")
-        print(f"{'='*60}\n")
+    print("Validating dataset integrity, balance, and leakage...\n")
 
-        total_images = 0
-        corrupted_images = 0
-        class_stats = []
+    all_rows = []
+    all_corrupted = []
 
-        for class_dir in sorted(dataset_dir.iterdir()):
-            if not class_dir.is_dir():
-                continue
+    for split_name, split_dir in split_dirs:
+        rows, corrupted = _scan_split(split_name, split_dir)
+        all_rows.extend(rows)
+        all_corrupted.extend(corrupted)
 
-            class_name = class_dir.name
-            images = list(class_dir.glob("*.jpg"))
-            valid_count = 0
-            invalid_count = 0
+    if not all_rows:
+        print("[ERROR] No images found in dataset splits")
+        return
 
-            # Check each image
-            for img_path in images:
-                try:
-                    with Image.open(img_path) as img:
-                        img.verify()
-                    valid_count += 1
-                except Exception as e:
-                    print(f"⚠️  Corrupted: {img_path.name} - {e}")
-                    invalid_count += 1
+    df = pd.DataFrame(all_rows)
 
-            total_images += valid_count
-            corrupted_images += invalid_count
+    _print_split_overview(df)
+    _print_balance_report(df)
+    _print_scene_leakage(df)
 
-            class_stats.append({
-                'Class': class_name,
-                'Valid': valid_count,
-                'Corrupted': invalid_count,
-                'Total': valid_count + invalid_count
-            })
+    df.to_csv(report_path, index=False)
 
-        # Create DataFrame
-        df = pd.DataFrame(class_stats)
+    print("\n" + "=" * 72)
+    print("VALIDATION COMPLETE")
+    print("=" * 72)
+    print(f"Total images scanned: {len(df)}")
+    print(f"Valid images: {int(df['valid'].sum())}")
+    print(f"Corrupted images: {len(all_corrupted)}")
+    print(f"Report CSV: {report_path}")
 
-        print(df.to_string(index=False))
-        print(f"\n{'-'*60}")
-        print(f"Total valid images:     {total_images}")
-        print(f"Total corrupted images: {corrupted_images}")
-        print(f"Total classes:          {len(class_stats)}")
-        print(f"Average per class:      {total_images / len(class_stats):.1f}")
+    if all_corrupted:
+        print("\n[WARN] Corrupted files:")
+        for p in all_corrupted[:20]:
+            print(f"  - {p}")
+        if len(all_corrupted) > 20:
+            print(f"  ... and {len(all_corrupted) - 20} more")
+    else:
+        print("\n[OK] All scanned images are valid")
 
-        if corrupted_images == 0:
-            print(f"\n✅ All {dataset_name.lower()} images are valid!")
-        else:
-            print(f"\n⚠️  Found {corrupted_images} corrupted images in {dataset_name.lower()} set")
-
-    # Final summary
-    print(f"\n{'='*60}")
-    print(f"VALIDATION COMPLETE")
-    print(f"{'='*60}\n")
-
-    train_count = sum([len(list(d.glob("*.jpg"))) for d in train_dir.iterdir() if d.is_dir()])
-    test_count = sum([len(list(d.glob("*.jpg"))) for d in test_dir.iterdir() if d.is_dir()])
-
-    print(f"✓ Train images: {train_count}")
-    print(f"✓ Test images:  {test_count}")
-    print(f"✓ Total images: {train_count + test_count}")
-    print(f"\n✅ Dataset is ready for Edge Impulse upload!")
-    print(f"\nUpload instructions:")
-    print(f"  1. Go to https://studio.edgeimpulse.com")
-    print(f"  2. Create new project: 'Traffic Sign Recognition ESP32'")
-    print(f"  3. Upload train folder: {train_dir}")
-    print(f"  4. Upload test folder: {test_dir} (mark as 'Test data')")
 
 if __name__ == "__main__":
     validate_dataset()
